@@ -1,0 +1,154 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.email == 'Ishanacharya@gmail.com';
+    }
+    
+    // Check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user is an approved vendor
+    function isApprovedVendor() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'vendor' &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved';
+    }
+    
+    // Check if user is a customer
+    function isCustomer() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
+    }
+    
+    // Validate user data structure
+    function isValidUserData() {
+      return request.resource.data.keys().hasAll(['email', 'name', 'mobileNumber', 'role', 'status', 'createdAt']) &&
+             request.resource.data.role in ['vendor', 'customer'] &&
+             request.resource.data.status in ['pending', 'approved', 'rejected'] &&
+             request.resource.data.email is string &&
+             request.resource.data.name is string &&
+             request.resource.data.mobileNumber is string;
+    }
+    
+    // Validate shop data structure
+    function isValidShopData() {
+      return request.resource.data.keys().hasAll(['shopName', 'upiId', 'token', 'verified', 'ownerId', 'createdAt', 'enabled']) &&
+             request.resource.data.shopName is string &&
+             request.resource.data.upiId is string &&
+             request.resource.data.token is string &&
+             request.resource.data.verified is bool &&
+             request.resource.data.enabled is bool &&
+             request.resource.data.ownerId == request.auth.uid;
+    }
+    
+    // ============================================
+    // USERS COLLECTION
+    // ============================================
+    
+    match /users/{userId} {
+      // Users can read their own document
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      
+      // Users can create their own document during registration
+      // Must not be admin email
+      allow create: if isAuthenticated() && 
+                      isOwner(userId) && 
+                      isValidUserData() &&
+                      request.resource.data.email != 'Ishanacharya@gmail.com';
+      
+      // Users cannot update their own document (except admin)
+      // This prevents users from changing their role or status
+      allow update: if false;
+      
+      // Admin can read all users
+      allow read: if isAdmin();
+      
+      // Admin can update user status (for vendor approval)
+      allow update: if isAdmin() && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'rejectedAt']);
+      
+      // Admin can delete users
+      allow delete: if isAdmin();
+    }
+    
+    // ============================================
+    // SHOPS COLLECTION
+    // ============================================
+    
+    match /shops/{shopId} {
+      // Anyone can read shops (needed for QR verification)
+      // This is safe because shops are public information
+      allow read: if true;
+      
+      // Only approved vendors can create shops
+      allow create: if isApprovedVendor() && 
+                      isValidShopData();
+      
+      // Shop owners can update their own shops
+      // Cannot change ownerId, token, or verified status
+      allow update: if isAuthenticated() && 
+                      resource.data.ownerId == request.auth.uid &&
+                      request.resource.data.ownerId == resource.data.ownerId &&
+                      request.resource.data.token == resource.data.token &&
+                      request.resource.data.verified == resource.data.verified;
+      
+      // Admin can do everything with shops
+      allow read, write: if isAdmin();
+      
+      // Shop owners can delete their own shops
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+    
+    // ============================================
+    // TRANSACTIONS COLLECTION
+    // ============================================
+    
+    match /transactions/{transactionId} {
+      // Anyone can create transactions (for payment recording)
+      // This is needed for the payment flow
+      allow create: if request.resource.data.keys().hasAll(['shopId', 'shopName', 'amount', 'timestamp', 'status']) &&
+                      request.resource.data.amount is number &&
+                      request.resource.data.amount > 0 &&
+                      request.resource.data.status in ['success', 'pending', 'failed'];
+      
+      // Users can read their own transactions
+      allow read: if isAuthenticated() && 
+                    (request.auth.uid == resource.data.customerId ||
+                     exists(/databases/$(database)/documents/shops/$(resource.data.shopId)) &&
+                     get(/databases/$(database)/documents/shops/$(resource.data.shopId)).data.ownerId == request.auth.uid);
+      
+      // Admin can read all transactions
+      allow read: if isAdmin();
+      
+      // No one can update or delete transactions (immutable)
+      allow update, delete: if false;
+    }
+    
+    // ============================================
+    // DENY ALL OTHER COLLECTIONS
+    // ============================================
+    
+    // Explicitly deny access to any other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "secure-upi-payment",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test:pre-deploy": "node scripts/pre-deployment-check.js",
+    "test:production": "node scripts/test-production.js",
+    "deploy:check": "npm run test:pre-deploy && npm run build",
+    "deploy": "npm run build && firebase deploy",
+    "deploy:hosting": "npm run build && firebase deploy --only hosting",
+    "deploy:rules": "firebase deploy --only firestore:rules,storage:rules"
+  },
+  "dependencies": {
+    "firebase": "^11.10.0",
+    "framer-motion": "^12.38.0",
+    "html5-qrcode": "^2.3.8",
+    "next": "^15.1.0",
+    "qrcode.react": "^4.0.1",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-hot-toast": "^2.6.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/uuid": "^9.0.7",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.52.0",
+    "eslint-config-next": "^15.1.0",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,62 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.email == 'Ishanacharya@gmail.com';
+    }
+    
+    // Check if file is an image
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    // Check if file size is acceptable (max 5MB)
+    function isValidSize() {
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+    
+    // ============================================
+    // SHOP IMAGES
+    // ============================================
+    
+    match /shop-images/{userId}/{fileName} {
+      // Allow authenticated users to upload their shop images
+      // Must be an image and under 5MB
+      allow write: if isAuthenticated() && 
+                     request.auth.uid == userId &&
+                     isImage() &&
+                     isValidSize();
+      
+      // Anyone can read shop images (needed for display)
+      allow read: if true;
+      
+      // Admin can do everything
+      allow read, write: if isAdmin();
+      
+      // Users can delete their own images
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // ============================================
+    // DENY ALL OTHER PATHS
+    // ============================================
+    
+    // Explicitly deny access to any other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
