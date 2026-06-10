@@ -101,7 +101,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 In Firebase Authentication console, create a user with:
 - Email: `Ishanacharya@gmail.com`
-- Password: `SecureQR@2026`
+- Password: '_________'
 
 This user will have admin access.
 
