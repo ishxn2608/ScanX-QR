@@ -4,6 +4,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   User as FirebaseUser,
   RecaptchaVerifier,
   signInWithPhoneNumber,
@@ -110,8 +111,25 @@ export async function loginUser(email: string, password: string) {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     return cred.user;
   } catch (error: any) {
-    console.error("Login error:", error);
-    throw new Error(error.message || "Failed to login");
+    console.error("Login error:", error.code, error.message);
+    // Map Firebase error codes to clean user-facing messages
+    switch (error.code) {
+      case "auth/wrong-password":
+      case "auth/invalid-credential":
+        throw new Error("Incorrect password. Please try again.");
+      case "auth/user-not-found":
+        throw new Error("No account found with this email address.");
+      case "auth/invalid-email":
+        throw new Error("Please enter a valid email address.");
+      case "auth/user-disabled":
+        throw new Error("This account has been disabled. Contact support.");
+      case "auth/too-many-requests":
+        throw new Error("Too many failed attempts. Please try again later.");
+      case "auth/network-request-failed":
+        throw new Error("Network error. Check your internet connection.");
+      default:
+        throw new Error("Login failed. Please check your credentials.");
+    }
   }
 }
 
@@ -122,24 +140,26 @@ export async function loginAdmin(email: string, password: string) {
   }
 
   try {
-    // Try to login with Firebase Authentication
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    
-    // Double check if this is the admin email
     if (cred.user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
       await signOut(auth);
       throw new Error("Unauthorized access");
     }
-
     return cred.user;
   } catch (error: any) {
-    console.error("Admin login error:", error);
-    if (error.code === 'auth/user-not-found') {
-      throw new Error("Admin account not found. Please create it in Firebase Console.");
-    } else if (error.code === 'auth/wrong-password') {
-      throw new Error("Invalid password");
-    } else {
-      throw new Error(error.message || "Invalid admin credentials");
+    console.error("Admin login error:", error.code, error.message);
+    switch (error.code) {
+      case "auth/wrong-password":
+      case "auth/invalid-credential":
+        throw new Error("Incorrect password. Please try again.");
+      case "auth/user-not-found":
+        throw new Error("Admin account not found in Firebase. Please create it first.");
+      case "auth/too-many-requests":
+        throw new Error("Too many failed attempts. Please try again later.");
+      case "auth/network-request-failed":
+        throw new Error("Network error. Check your internet connection.");
+      default:
+        throw new Error(error.message || "Invalid admin credentials");
     }
   }
 }
@@ -177,6 +197,30 @@ export async function getUserStatus(uid: string): Promise<string | null> {
 // Auth state observer
 export function onAuthChange(cb: (user: FirebaseUser | null) => void) {
   return onAuthStateChanged(auth, cb);
+}
+
+// Send password reset email
+export async function sendPasswordReset(email: string): Promise<void> {
+  // Block admin email from self-service reset
+  if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+    throw new Error("Admin password cannot be reset from here.");
+  }
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (error: any) {
+    switch (error.code) {
+      case "auth/user-not-found":
+        throw new Error("No account found with this email address.");
+      case "auth/invalid-email":
+        throw new Error("Please enter a valid email address.");
+      case "auth/too-many-requests":
+        throw new Error("Too many requests. Please try again later.");
+      case "auth/network-request-failed":
+        throw new Error("Network error. Check your internet connection.");
+      default:
+        throw new Error("Failed to send reset email. Please try again.");
+    }
+  }
 }
 
 // Export admin credentials for initial setup

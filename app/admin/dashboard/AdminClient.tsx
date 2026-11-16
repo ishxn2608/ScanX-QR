@@ -22,6 +22,7 @@ export default function AdminClient() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
+  const [shopFilter, setShopFilter] = useState<"all" | "pending" | "verified">("pending");
   const [activeTab, setActiveTab] = useState<"vendors" | "shops" | "transactions">("vendors");
   const router = useRouter();
 
@@ -65,22 +66,34 @@ export default function AdminClient() {
       setVendors(vendorsList);
     });
 
-    // Load shops and transactions
+    // Load shops and transactions initially and set up refresh
     loadShopsAndTransactions();
+    
+    // Refresh shops every 5 seconds to show new shop requests
+    const refreshInterval = setInterval(() => {
+      loadShopsAndTransactions();
+    }, 5000);
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearInterval(refreshInterval);
+    };
   }, [user]);
 
   const loadShopsAndTransactions = async () => {
     try {
+      console.log("🏪 Loading shops and transactions...");
       const [shopsData, transactionsData] = await Promise.all([
         getAllShops(),
         getAllTransactions(),
       ]);
+      console.log("📊 Shops loaded:", shopsData.length, "shops found");
+      console.log("Pending shops:", shopsData.filter(s => !s.verified).length);
+      console.log("Verified shops:", shopsData.filter(s => s.verified).length);
       setShops(shopsData);
       setTransactions(transactionsData);
     } catch (error) {
-      console.error("Error loading data:", error);
+      console.error("❌ Error loading data:", error);
     }
   };
 
@@ -128,12 +141,20 @@ export default function AdminClient() {
     return vendor.status === filter;
   });
 
+  const filteredShops = shops.filter((shop) => {
+    if (shopFilter === "all") return true;
+    if (shopFilter === "verified") return shop.verified === true;
+    if (shopFilter === "pending") return shop.verified === false;
+    return true;
+  });
+
   const stats = {
     totalVendors: vendors.length,
     pendingVendors: vendors.filter((v) => v.status === "pending").length,
     approvedVendors: vendors.filter((v) => v.status === "approved").length,
     rejectedVendors: vendors.filter((v) => v.status === "rejected").length,
     totalShops: shops.length,
+    pendingShops: shops.filter((s) => !s.verified).length,
     verifiedShops: shops.filter((s) => s.verified).length,
     totalTransactions: transactions.length,
   };
@@ -170,14 +191,14 @@ export default function AdminClient() {
           <StatCard title="Total Vendors" value={stats.totalVendors} color="blue"
             icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m6-4a4 4 0 11-8 0 4 4 0 018 0zm6 4a3 3 0 10-6 0" /></svg>}
           />
-          <StatCard title="Pending" value={stats.pendingVendors} color="yellow"
+          <StatCard title="Pending Vendors" value={stats.pendingVendors} color="yellow"
             icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M12 7v5l3 3" /></svg>}
-          />
-          <StatCard title="Approved" value={stats.approvedVendors} color="green"
-            icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
           />
           <StatCard title="Total Shops" value={stats.totalShops} color="purple"
             icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" d="M9 22V12h6v10" /></svg>}
+          />
+          <StatCard title="Pending Shops" value={stats.pendingShops} color="orange"
+            icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>}
           />
         </div>
 
@@ -191,7 +212,7 @@ export default function AdminClient() {
           <TabButton active={activeTab === "shops"} onClick={() => setActiveTab("shops")}
             icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" d="M9 22V12h6v10" /></svg>}
           >
-            Shops
+            Shops ({stats.pendingShops} pending)
           </TabButton>
           <TabButton active={activeTab === "transactions"} onClick={() => setActiveTab("transactions")}
             icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2" /><path strokeLinecap="round" d="M2 10h20M6 15h4" /></svg>}
@@ -266,17 +287,47 @@ export default function AdminClient() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="grid gap-4"
+            className="space-y-6"
           >
-            {shops.length === 0 ? (
-              <div className="glass-card p-12 text-center">
-                <p className="text-gray-400 text-lg">No shops found</p>
+            {/* Shop Filter */}
+            <div className="glass-card p-4">
+              <div className="flex flex-wrap gap-3">
+                <FilterButton
+                  active={shopFilter === "pending"}
+                  onClick={() => setShopFilter("pending")}
+                  count={stats.pendingShops}
+                >
+                  Pending Verification
+                </FilterButton>
+                <FilterButton
+                  active={shopFilter === "verified"}
+                  onClick={() => setShopFilter("verified")}
+                  count={stats.verifiedShops}
+                >
+                  Verified
+                </FilterButton>
+                <FilterButton
+                  active={shopFilter === "all"}
+                  onClick={() => setShopFilter("all")}
+                  count={stats.totalShops}
+                >
+                  All Shops
+                </FilterButton>
               </div>
-            ) : (
-              shops.map((shop) => (
-                <ShopCard key={shop.id} shop={shop} onVerify={handleVerifyShop} />
-              ))
-            )}
+            </div>
+
+            {/* Shops List */}
+            <div className="grid gap-4">
+              {filteredShops.length === 0 ? (
+                <div className="glass-card p-12 text-center">
+                  <p className="text-gray-400 text-lg">No shops found</p>
+                </div>
+              ) : (
+                filteredShops.map((shop) => (
+                  <ShopCard key={shop.id} shop={shop} onVerify={handleVerifyShop} />
+                ))
+              )}
+            </div>
           </motion.div>
         )}
 
@@ -310,6 +361,7 @@ function StatCard({ title, value, color, icon }: { title: string; value: number;
     yellow: "from-yellow-500 to-yellow-600",
     green: "from-green-500 to-green-600",
     purple: "from-purple-500 to-purple-600",
+    orange: "from-orange-500 to-orange-600",
   };
 
   return (
@@ -417,12 +469,25 @@ function VendorCard({ vendor, onApprove, onReject }: any) {
 }
 
 function ShopCard({ shop, onVerify }: any) {
+  const isPending = !shop.verified;
+  
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass-card p-6"
+      className={`glass-card p-6 ${isPending ? 'border-2 border-yellow-500/50 bg-yellow-500/5' : ''}`}
     >
+      {isPending && (
+        <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+          <p className="text-yellow-300 text-sm font-semibold flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            ⚠️ Pending QR Verification - Action Required
+          </p>
+        </div>
+      )}
+      
       <div className="flex flex-col md:flex-row gap-6">
         {shop.imageUrl && (
           <img
@@ -434,7 +499,11 @@ function ShopCard({ shop, onVerify }: any) {
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <h3 className="text-xl font-bold">{shop.shopName}</h3>
-            {shop.verified && <span className="badge-verified text-xs">Verified</span>}
+            {shop.verified ? (
+              <span className="badge-verified text-xs">✓ Verified</span>
+            ) : (
+              <span className="badge-pending text-xs">⏳ Pending</span>
+            )}
           </div>
           <div className="space-y-1 text-sm text-gray-400">
             <p className="flex items-center gap-2">
@@ -449,19 +518,37 @@ function ShopCard({ shop, onVerify }: any) {
               <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18" /></svg>
               Created: {shop.createdAt?.toDate().toLocaleDateString()}
             </p>
+            {shop.enabled !== undefined && (
+              <p className="flex items-center gap-2">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" />
+                  <path strokeLinecap="round" d="M12 6v6l4 2" />
+                </svg>
+                Status: {shop.enabled ? (
+                  <span className="text-green-400">Active</span>
+                ) : (
+                  <span className="text-red-400">Disabled</span>
+                )}
+              </p>
+            )}
           </div>
         </div>
-        <div>
+        <div className="flex flex-col gap-3">
           <button
             onClick={() => onVerify(shop.id, !shop.verified)}
             className={`px-6 py-3 rounded-xl font-semibold transition-all ${
               shop.verified
                 ? "bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30"
-                : "bg-green-500/20 border border-green-500/50 text-green-300 hover:bg-green-500/30"
+                : "bg-green-500/20 border-2 border-green-500 text-green-300 hover:bg-green-500/30 shadow-lg shadow-green-500/20"
             }`}
           >
-            {shop.verified ? "Unverify" : "Verify"}
+            {shop.verified ? "✕ Unverify" : "✓ Verify Shop"}
           </button>
+          {isPending && (
+            <p className="text-xs text-yellow-300 text-center">
+              Click to approve QR code
+            </p>
+          )}
         </div>
       </div>
     </motion.div>

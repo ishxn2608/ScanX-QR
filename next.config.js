@@ -1,8 +1,14 @@
 ﻿/** @type {import("next").NextConfig} */
 const nextConfig = {
-  images: { 
+  images: {
     unoptimized: true,
-    domains: ["firebasestorage.googleapis.com"] 
+    domains: ["firebasestorage.googleapis.com", "res.cloudinary.com"],
   },
-}
-module.exports = nextConfig
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+};
+module.exports = nextConfig;

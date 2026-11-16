@@ -139,6 +139,8 @@ export async function getAllVendors(): Promise<UserData[]> {
 
 // Real-time listener for all vendors — no orderBy (sort in JS)
 export function onVendorsChange(callback: (vendors: UserData[]) => void) {
+  console.log("🔍 Setting up vendors listener...");
+  
   const q = query(
     collection(db, "users"),
     where("role", "==", "vendor")
@@ -147,11 +149,31 @@ export function onVendorsChange(callback: (vendors: UserData[]) => void) {
   return onSnapshot(
     q,
     (snapshot) => {
-      const vendors = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as UserData));
+      console.log("📊 Vendors snapshot received:", {
+        size: snapshot.size,
+        empty: snapshot.empty,
+        docs: snapshot.docs.length
+      });
+      
+      const vendors = snapshot.docs.map((d) => {
+        const data = d.data();
+        console.log("👤 Vendor found:", {
+          id: d.id,
+          name: data.name,
+          email: data.email,
+          role: data.role,
+          status: data.status
+        });
+        return { id: d.id, ...data } as UserData;
+      });
+      
+      console.log("✅ Total vendors to display:", vendors.length);
       callback(sortByCreatedAt(vendors));
     },
     (error) => {
-      console.error("Vendors listener error:", error);
+      console.error("❌ Vendors listener error:", error);
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
     }
   );
 }
@@ -237,9 +259,55 @@ export async function getShopsByOwner(ownerId: string): Promise<Shop[]> {
 
 // Get all shops (admin only)
 export async function getAllShops(): Promise<Shop[]> {
+  console.log("🏪 Loading all shops...");
   const snap = await getDocs(collection(db, "shops"));
-  const shops = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Shop));
+  console.log("📊 Shops found:", snap.size);
+  const shops = snap.docs.map((d) => {
+    const data = d.data();
+    console.log("🏪 Shop:", {
+      id: d.id,
+      name: data.shopName,
+      verified: data.verified,
+      ownerId: data.ownerId
+    });
+    return { id: d.id, ...data } as Shop;
+  });
   return sortByCreatedAt(shops);
+}
+
+// Real-time listener for all shops (admin only)
+export function onShopsChange(callback: (shops: Shop[]) => void) {
+  console.log("🔍 Setting up shops listener...");
+  
+  return onSnapshot(
+    collection(db, "shops"),
+    (snapshot) => {
+      console.log("📊 Shops snapshot received:", {
+        size: snapshot.size,
+        empty: snapshot.empty,
+        docs: snapshot.docs.length
+      });
+      
+      const shops = snapshot.docs.map((d) => {
+        const data = d.data();
+        console.log("🏪 Shop found:", {
+          id: d.id,
+          name: data.shopName,
+          verified: data.verified,
+          ownerId: data.ownerId
+        });
+        return { id: d.id, ...data } as Shop;
+      });
+      
+      console.log("✅ Total shops to display:", shops.length);
+      callback(sortByCreatedAt(shops));
+    },
+    (error) => {
+      console.error("❌ Shops listener error:", error);
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+    }
+  );
 }
 
 // Update shop verification (admin only)

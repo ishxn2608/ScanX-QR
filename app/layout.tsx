@@ -7,9 +7,7 @@ export const metadata: Metadata = {
   title: "ScanX QR — Scan. Verify. Trust.",
   description: "ScanX QR — Prevent QR code fraud with real-time merchant identity verification",
   icons: {
-    icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
-    ],
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
     shortcut: "/favicon.svg",
     apple: "/favicon.svg",
   },
@@ -19,11 +17,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/* Favicon — SVG works in all modern browsers and scales perfectly */}
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="shortcut icon" href="/favicon.svg" />
         <link rel="apple-touch-icon" href="/favicon.svg" />
-
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
@@ -46,12 +42,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               borderRadius: "16px",
               padding: "16px",
             },
-            success: {
-              iconTheme: { primary: "#10b981", secondary: "#fff" },
-            },
-            error: {
-              iconTheme: { primary: "#ef4444", secondary: "#fff" },
-            },
+            success: { iconTheme: { primary: "#10b981", secondary: "#fff" } },
+            error:   { iconTheme: { primary: "#ef4444", secondary: "#fff" } },
           }}
         />
       </body>

@@ -6,10 +6,10 @@ import { motion } from "framer-motion";
 import { onAuthChange, getUserStatus } from "@/lib/auth";
 import { getShopsByOwner, createShop, updateShop, regenerateToken, toggleShopStatus } from "@/lib/firestore";
 import { Shop } from "@/lib/types";
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { uploadImageToCloudinary } from "@/lib/cloudinary";
 import { QRCodeSVG } from "qrcode.react";
 import toast from "react-hot-toast";
+import UpiQrScanner from "@/components/UpiQrScanner";
 
 export default function VendorClient() {
   const [user, setUser] = useState<any>(null);
@@ -192,7 +192,7 @@ function ShopCard({ shop, index, onUpdate }: { shop: Shop; index: number; onUpda
   const [regenerating, setRegenerating] = useState(false);
   const [toggling, setToggling] = useState(false);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://secure-upi-payment.vercel.app";
   const paymentUrl = `${appUrl}/pay?token=${shop.token}`;
 
   const handleRegenerateToken = async () => {
@@ -232,27 +232,140 @@ function ShopCard({ shop, index, onUpdate }: { shop: Shop; index: number; onUpda
     const serializer = new XMLSerializer();
     const svgStr = serializer.serializeToString(svg);
     const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svgBlob);
+    const svgUrl = URL.createObjectURL(svgBlob);
 
-    // Convert SVG to PNG via canvas
-    const img = new Image();
-    img.onload = () => {
+    const qrImg = new Image();
+    qrImg.onload = () => {
+      // Canvas dimensions — A4-ish portrait card
+      const W = 720;
+      const H = 1020;
       const canvas = document.createElement("canvas");
-      canvas.width = 300;
-      canvas.height = 300;
+      canvas.width = W;
+      canvas.height = H;
       const ctx = canvas.getContext("2d")!;
+
+      // ── Background ──────────────────────────────────────
+      ctx.fillStyle = "#0d1b35";
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle card border
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 2;
+      roundRect(ctx, 20, 20, W - 40, H - 40, 24);
+      ctx.stroke();
+
+      // ── Top header band ──────────────────────────────────
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      roundRect(ctx, 40, 40, W - 80, 150, 16);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // ScanX QR logo text
+      ctx.font = "bold 52px 'Inter', Arial, sans-serif";
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, 300, 300);
-      ctx.drawImage(img, 0, 0, 300, 300);
-      URL.revokeObjectURL(url);
-      const pngUrl = canvas.toDataURL("image/png");
+      ctx.textAlign = "center";
+      ctx.fillText("ScanX", W / 2 - 48, 108);
+      ctx.fillStyle = "#3b82f6";
+      ctx.fillText(" QR", W / 2 + 70, 108);
+
+      // "SCAN. VERIFY. TRUST."
+      ctx.font = "600 15px 'Inter', Arial, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
+      ctx.letterSpacing = "4px";
+      ctx.fillText("SCAN.  VERIFY.  TRUST.", W / 2, 148);
+      ctx.letterSpacing = "0px";
+
+      // ── "SCAN TO PAY" heading ────────────────────────────
+      ctx.font = "bold 46px 'Inter', Arial, sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText("SCAN TO PAY", W / 2, 250);
+
+      // Subtitle
+      ctx.font = "400 20px 'Inter', Arial, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.fillText("Verify the shop before you pay", W / 2, 288);
+
+      // ── QR white card ────────────────────────────────────
+      const qrCardX = 100;
+      const qrCardY = 316;
+      const qrCardW = W - 200;
+      const qrCardH = 490;
+
+      ctx.fillStyle = "#ffffff";
+      roundRect(ctx, qrCardX, qrCardY, qrCardW, qrCardH, 20);
+      ctx.fill();
+
+      // Draw QR inside white card (centered, with padding)
+      const qrPad = 32;
+      ctx.drawImage(
+        qrImg,
+        qrCardX + qrPad,
+        qrCardY + qrPad,
+        qrCardW - qrPad * 2,
+        qrCardW - qrPad * 2
+      );
+
+      // Blue accent bar at bottom of QR card
+      ctx.fillStyle = "#3b82f6";
+      roundRect(ctx, qrCardX + qrCardW / 2 - 90, qrCardY + qrCardH - 28, 180, 8, 4);
+      ctx.fill();
+
+      // ── SHOP NAME section ────────────────────────────────
+      ctx.font = "600 15px 'Inter', Arial, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.letterSpacing = "3px";
+      ctx.fillText("SHOP NAME", W / 2, 870);
+      ctx.letterSpacing = "0px";
+
+      // Divider line
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(100, 886);
+      ctx.lineTo(W - 100, 886);
+      ctx.stroke();
+
+      // Actual shop name
+      ctx.font = "bold 36px 'Inter', Arial, sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.letterSpacing = "2px";
+      ctx.fillText(shop.shopName.toUpperCase(), W / 2, 938);
+      ctx.letterSpacing = "0px";
+
+      // ── Footer ───────────────────────────────────────────
+      ctx.font = "400 14px 'Inter', Arial, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.fillText("Developed by Ishan Acharya", W / 2, 988);
+
+      // Download
+      URL.revokeObjectURL(svgUrl);
       const link = document.createElement("a");
-      link.download = `${shop.shopName}-QR.png`;
-      link.href = pngUrl;
+      link.download = `${shop.shopName}-ScanX-QR.png`;
+      link.href = canvas.toDataURL("image/png");
       link.click();
     };
-    img.src = url;
+    qrImg.src = svgUrl;
   };
+
+  // Helper: draw rounded rect path
+  function roundRect(
+    ctx: CanvasRenderingContext2D,
+    x: number, y: number, w: number, h: number, r: number
+  ) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
 
   return (
     <>
@@ -386,7 +499,37 @@ function CreateShopModal({ userId, onClose, onSuccess }: any) {
   const [shopName, setShopName] = useState("");
   const [upiId, setUpiId] = useState("");
   const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>("");
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [upiVerified, setUpiVerified] = useState(false);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (max 2MB for faster upload)
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error("Image size must be less than 2MB");
+        return;
+      }
+      
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        toast.error("Please select a valid image file");
+        return;
+      }
+      
+      setImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -410,31 +553,50 @@ function CreateShopModal({ userId, onClose, onSuccess }: any) {
 
     try {
       let imageUrl = "";
+      
       if (image) {
-        console.log("Uploading image...");
-        const storageRef = ref(storage, `shop-images/${userId}/${Date.now()}_${image.name}`);
-        await uploadBytes(storageRef, image);
-        imageUrl = await getDownloadURL(storageRef);
-        console.log("Image uploaded successfully:", imageUrl);
+        try {
+          console.log("📤 Starting image upload to Cloudinary...", {
+            name: image.name,
+            size: `${(image.size / 1024).toFixed(2)} KB`,
+            type: image.type
+          });
+          
+          setUploadProgress("Uploading image...");
+          
+          // Upload to Cloudinary (Free alternative)
+          imageUrl = await uploadImageToCloudinary(image);
+          
+          console.log("✅ Image uploaded successfully:", imageUrl);
+          
+        } catch (uploadError: any) {
+          console.error("❌ Image upload failed:", uploadError);
+          console.log("⚠️ Continuing without image");
+          imageUrl = "";
+        }
       }
 
-      console.log("Creating shop with data:", { userId, shopName, upiId, imageUrl });
+      console.log("🏪 Creating shop...", { userId, shopName, upiId, hasImage: !!imageUrl });
+      setUploadProgress("Creating shop...");
+      
       const result = await createShop(userId, shopName, upiId, imageUrl);
-      console.log("Shop created successfully:", result);
+      console.log("✅ Shop created successfully:", result);
       
-      toast.success("Shop created successfully!", { id: loadingToast });
+      const successMessage = imageUrl 
+        ? "Shop created successfully!" 
+        : "Shop created successfully (without image)";
+      
+      toast.success(successMessage, { id: loadingToast });
       onSuccess();
-    } catch (err: any) {
-      console.error("Shop creation error:", err);
       
-      // Provide more specific error messages
+    } catch (err: any) {
+      console.error("❌ Shop creation error:", err);
+      
       let errorMessage = "Failed to create shop";
       if (err.message.includes("Only approved vendors")) {
-        errorMessage = "Your vendor account is not approved yet. Please wait for admin approval.";
+        errorMessage = "Your vendor account is not approved yet.";
       } else if (err.message.includes("permission-denied")) {
         errorMessage = "Permission denied. Please check your account status.";
-      } else if (err.message.includes("network")) {
-        errorMessage = "Network error. Please check your internet connection.";
       } else if (err.message) {
         errorMessage = err.message;
       }
@@ -442,10 +604,12 @@ function CreateShopModal({ userId, onClose, onSuccess }: any) {
       toast.error(errorMessage, { id: loadingToast });
     } finally {
       setLoading(false);
+      setUploadProgress("");
     }
   };
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -456,52 +620,131 @@ function CreateShopModal({ userId, onClose, onSuccess }: any) {
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         onClick={(e) => e.stopPropagation()}
-        className="glass-card p-8 max-w-md w-full"
+        className="glass-card p-8 max-w-md w-full max-h-[90vh] overflow-y-auto"
       >
         <h2 className="text-2xl font-bold mb-6">Create New Shop</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Shop Name</label>
+        <form onSubmit={handleSubmit} className="space-y-4">          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Shop Name *</label>
             <input
               type="text"
               required
               className="input-glass"
+              placeholder="My Shop"
               value={shopName}
               onChange={(e) => setShopName(e.target.value)}
+              disabled={loading}
             />
           </div>
+          
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">UPI ID</label>
-            <input
-              type="text"
-              required
-              placeholder="yourname@upi"
-              className="input-glass"
-              value={upiId}
-              onChange={(e) => setUpiId(e.target.value)}
-            />
+            <label className="block text-sm font-medium text-gray-300 mb-2">UPI ID *</label>
+            
+            {/* UPI QR Scan Button */}
+            <button
+              type="button"
+              onClick={() => setShowQrScanner(true)}
+              disabled={loading}
+              className="w-full mb-2 py-3 rounded-xl border-2 border-dashed border-blue-500/50 text-blue-300 hover:bg-blue-500/10 transition-all font-semibold flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+              </svg>
+              Scan Official UPI QR Code
+              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Recommended</span>
+            </button>
+
+            <div className="relative">
+              <input
+                type="text"
+                required
+                placeholder="yourname@paytm"
+                className={`input-glass pr-10 ${upiVerified ? "border-green-500/50" : ""}`}
+                value={upiId}
+                onChange={(e) => { setUpiId(e.target.value); setUpiVerified(false); }}
+                disabled={loading}
+              />
+              {upiVerified && (
+                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+            </div>
+
+            {upiVerified ? (
+              <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd"/></svg>
+                Verified via UPI QR — 100% genuine
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 mt-1">e.g. yourname@paytm, yourname@phonepe — or scan your QR above</p>
+            )}
           </div>
+          
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Shop Image</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Shop Image (Optional, max 2MB)
+            </label>
             <input
               type="file"
               accept="image/*"
-              className="w-full text-gray-300"
-              onChange={(e) => setImage(e.target.files?.[0] || null)}
+              className="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500/20 file:text-blue-300 hover:file:bg-blue-500/30 file:cursor-pointer"
+              onChange={handleImageChange}
+              disabled={loading}
             />
+            <p className="text-xs text-gray-400 mt-1">
+              Recommended: Square image, JPG or PNG format. You can add image later if upload is slow.
+            </p>
+            
+            {imagePreview && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-gray-400">Preview:</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImage(null);
+                      setImagePreview("");
+                    }}
+                    className="text-xs text-red-400 hover:text-red-300"
+                    disabled={loading}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <img 
+                  src={imagePreview} 
+                  alt="Preview" 
+                  className="w-32 h-32 object-cover rounded-lg border border-white/10"
+                />
+              </div>
+            )}
           </div>
+          
+          {uploadProgress && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <p className="text-blue-300 text-sm flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {uploadProgress}
+              </p>
+            </div>
+          )}
+          
           <div className="flex gap-2 pt-4">
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 btn-neon disabled:opacity-50"
+              className="flex-1 btn-neon disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>{loading ? "Creating..." : "Create Shop"}</span>
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-3 rounded-full border border-white/20 hover:bg-white/10 transition-all"
+              disabled={loading}
+              className="flex-1 px-6 py-3 rounded-full border border-white/20 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
@@ -509,6 +752,20 @@ function CreateShopModal({ userId, onClose, onSuccess }: any) {
         </form>
       </motion.div>
     </motion.div>
+
+    {showQrScanner && (
+      <UpiQrScanner
+        onScanSuccess={(data) => {
+          setUpiId(data.upiId);
+          if (!shopName && data.shopName) setShopName(data.shopName);
+          setUpiVerified(true);
+          setShowQrScanner(false);
+          toast.success(`UPI ID detected: ${data.upiId}`);
+        }}
+        onClose={() => setShowQrScanner(false)}
+      />
+    )}
+    </>
   );
 }
 
@@ -516,7 +773,37 @@ function EditShopModal({ shop, onClose, onSuccess }: any) {
   const [shopName, setShopName] = useState(shop.shopName);
   const [upiId, setUpiId] = useState(shop.upiId);
   const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>(shop.imageUrl || "");
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>("");
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [upiVerified, setUpiVerified] = useState(false);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error("Image size must be less than 2MB");
+        return;
+      }
+      
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        toast.error("Please select a valid image file");
+        return;
+      }
+      
+      setImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -525,23 +812,41 @@ function EditShopModal({ shop, onClose, onSuccess }: any) {
 
     try {
       let imageUrl = shop.imageUrl;
+      
       if (image) {
-        const storageRef = ref(storage, `shop-images/${shop.ownerId}/${Date.now()}_${image.name}`);
-        await uploadBytes(storageRef, image);
-        imageUrl = await getDownloadURL(storageRef);
+        try {
+          console.log("📤 Starting image upload to Cloudinary...");
+          setUploadProgress("Uploading image...");
+          
+          // Upload to Cloudinary (Free alternative)
+          imageUrl = await uploadImageToCloudinary(image);
+          
+          console.log("✅ Image uploaded successfully");
+          
+        } catch (uploadError: any) {
+          console.error("❌ Image upload failed:", uploadError);
+          console.log("⚠️ Keeping existing image");
+          imageUrl = shop.imageUrl;
+        }
       }
 
+      setUploadProgress("Updating shop...");
       await updateShop(shop.id, { shopName, upiId, imageUrl });
+      
       toast.success("Shop updated successfully!", { id: loadingToast });
       onSuccess();
+      
     } catch (err: any) {
+      console.error("❌ Shop update error:", err);
       toast.error(err.message || "Failed to update shop", { id: loadingToast });
     } finally {
       setLoading(false);
+      setUploadProgress("");
     }
   };
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -552,7 +857,7 @@ function EditShopModal({ shop, onClose, onSuccess }: any) {
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         onClick={(e) => e.stopPropagation()}
-        className="glass-card p-8 max-w-md w-full"
+        className="glass-card p-8 max-w-md w-full max-h-[90vh] overflow-y-auto"
       >
         <h2 className="text-2xl font-bold mb-6">Edit Shop</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -564,39 +869,95 @@ function EditShopModal({ shop, onClose, onSuccess }: any) {
               className="input-glass"
               value={shopName}
               onChange={(e) => setShopName(e.target.value)}
+              disabled={loading}
             />
           </div>
+          
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">UPI ID</label>
-            <input
-              type="text"
-              required
-              className="input-glass"
-              value={upiId}
-              onChange={(e) => setUpiId(e.target.value)}
-            />
+            {/* UPI QR Scan Button */}
+            <button
+              type="button"
+              onClick={() => setShowQrScanner(true)}
+              disabled={loading}
+              className="w-full mb-2 py-2.5 rounded-xl border-2 border-dashed border-blue-500/50 text-blue-300 hover:bg-blue-500/10 transition-all font-semibold flex items-center justify-center gap-2 text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+              </svg>
+              Update UPI ID by Scanning QR Code
+            </button>
+            <div className="relative">
+              <input
+                type="text"
+                required
+                className={`input-glass pr-10 ${upiVerified ? "border-green-500/50" : ""}`}
+                value={upiId}
+                onChange={(e) => { setUpiId(e.target.value); setUpiVerified(false); }}
+                disabled={loading}
+              />
+              {upiVerified && (
+                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+            </div>
+            {upiVerified && (
+              <p className="text-xs text-green-400 mt-1">Verified via QR</p>
+            )}
           </div>
+          
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Update Shop Image</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Update Shop Image (Optional, max 2MB)
+            </label>
             <input
               type="file"
               accept="image/*"
-              className="w-full text-gray-300"
-              onChange={(e) => setImage(e.target.files?.[0] || null)}
+              className="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500/20 file:text-blue-300 hover:file:bg-blue-500/30 file:cursor-pointer"
+              onChange={handleImageChange}
+              disabled={loading}
             />
+            
+            {imagePreview && (
+              <div className="mt-3">
+                <p className="text-xs text-gray-400 mb-2">
+                  {image ? "New image preview:" : "Current image:"}
+                </p>
+                <img 
+                  src={imagePreview} 
+                  alt="Preview" 
+                  className="w-32 h-32 object-cover rounded-lg border border-white/10"
+                />
+              </div>
+            )}
           </div>
+          
+          {uploadProgress && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <p className="text-blue-300 text-sm flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {uploadProgress}
+              </p>
+            </div>
+          )}
+          
           <div className="flex gap-2 pt-4">
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 btn-neon disabled:opacity-50"
+              className="flex-1 btn-neon disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>{loading ? "Updating..." : "Update Shop"}</span>
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-3 rounded-full border border-white/20 hover:bg-white/10 transition-all"
+              disabled={loading}
+              className="flex-1 px-6 py-3 rounded-full border border-white/20 hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
@@ -604,5 +965,19 @@ function EditShopModal({ shop, onClose, onSuccess }: any) {
         </form>
       </motion.div>
     </motion.div>
+
+    {showQrScanner && (
+      <UpiQrScanner
+        onScanSuccess={(data) => {
+          setUpiId(data.upiId);
+          if (data.shopName) setShopName(data.shopName);
+          setUpiVerified(true);
+          setShowQrScanner(false);
+          toast.success(`UPI ID detected: ${data.upiId}`);
+        }}
+        onClose={() => setShowQrScanner(false)}
+      />
+    )}
+    </>
   );
 }

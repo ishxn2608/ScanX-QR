@@ -41,7 +41,9 @@ export default function Navbar() {
     router.push("/");
   };
 
-  const isAuthPage = pathname === "/login" || pathname === "/register";
+  const isAuthPage = pathname?.startsWith("/login") ||
+    pathname?.startsWith("/register") ||
+    pathname?.startsWith("/forgot-password");
 
   return (
     <motion.nav
@@ -53,21 +55,18 @@ export default function Navbar() {
       }`}
     >
       <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between relative">
           {/* Logo */}
           <Link href="/" className="flex items-center group">
             <ScanXLogo iconSize={36} fontSize={20} />
           </Link>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
+          {/* Desktop Navigation — absolutely centred */}
+          <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
             {!isAuthPage && (
               <>
                 <NavLink href="/" active={pathname === "/"}>
                   Home
-                </NavLink>
-                <NavLink href="/scan" active={pathname === "/scan"}>
-                  Scan QR
                 </NavLink>
                 {user && (
                   <>
@@ -85,6 +84,11 @@ export default function Navbar() {
                       </NavLink>
                     ) : null}
                   </>
+                )}
+                {!user && (
+                  <NavLink href="/scan" active={pathname === "/scan"}>
+                    Scan & Pay
+                  </NavLink>
                 )}
               </>
             )}
@@ -163,29 +167,26 @@ export default function Navbar() {
                 <MobileNavLink href="/" onClick={() => setMobileMenuOpen(false)}>
                   Home
                 </MobileNavLink>
-                <MobileNavLink href="/scan" onClick={() => setMobileMenuOpen(false)}>
-                  Scan QR
-                </MobileNavLink>
-                {user && (
-                  <MobileNavLink
-                    href={userRole === "admin" ? "/admin/dashboard" : userRole === "vendor" ? "/vendor" : "/scan"}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {userRole === "admin" ? "Dashboard" : userRole === "vendor" ? "Dashboard" : "Scan & Pay"}
-                  </MobileNavLink>
-                )}
                 {user ? (
-                  <button
-                    onClick={() => {
-                      handleLogout();
-                      setMobileMenuOpen(false);
-                    }}
-                    className="text-left px-4 py-2 rounded-lg hover:bg-white/10 transition-colors"
-                  >
-                    Logout
-                  </button>
+                  <>
+                    <MobileNavLink
+                      href={userRole === "admin" ? "/admin/dashboard" : userRole === "vendor" ? "/vendor" : "/scan"}
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      {userRole === "admin" ? "Dashboard" : userRole === "vendor" ? "Dashboard" : "Scan & Pay"}
+                    </MobileNavLink>
+                    <button
+                      onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                      className="text-left px-4 py-2 rounded-lg hover:bg-white/10 transition-colors"
+                    >
+                      Logout
+                    </button>
+                  </>
                 ) : (
                   <>
+                    <MobileNavLink href="/scan" onClick={() => setMobileMenuOpen(false)}>
+                      Scan & Pay
+                    </MobileNavLink>
                     <MobileNavLink href="/login" onClick={() => setMobileMenuOpen(false)}>
                       Login
                     </MobileNavLink>

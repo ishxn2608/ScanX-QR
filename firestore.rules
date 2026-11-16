@@ -64,8 +64,11 @@ service cloud.firestore {
     // ============================================
     
     match /users/{userId} {
+      // Admin can do everything
+      allow read, write: if isAdmin();
+      
       // Users can read their own document
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow read: if isAuthenticated() && isOwner(userId);
       
       // Users can create their own document during registration
       // Must not be admin email
@@ -74,19 +77,12 @@ service cloud.firestore {
                       isValidUserData() &&
                       request.resource.data.email != 'Ishanacharya@gmail.com';
       
-      // Users cannot update their own document (except admin)
+      // Users cannot update their own document
       // This prevents users from changing their role or status
       allow update: if false;
       
-      // Admin can read all users
-      allow read: if isAdmin();
-      
-      // Admin can update user status (for vendor approval)
-      allow update: if isAdmin() && 
-                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'rejectedAt']);
-      
-      // Admin can delete users
-      allow delete: if isAdmin();
+      // Users cannot delete their own document
+      allow delete: if false;
     }
     
     // ============================================

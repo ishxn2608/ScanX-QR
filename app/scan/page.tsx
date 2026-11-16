@@ -1,40 +1,39 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Html5QrcodeScanner } from "html5-qrcode";
+import { Html5QrcodeScanner, Html5Qrcode } from "html5-qrcode";
 
 export default function ScanPage() {
   const [scanning, setScanning] = useState(false);
   const [manualInput, setManualInput] = useState("");
+  const [scanMode, setScanMode] = useState<"camera" | "upload">("camera");
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
   const router = useRouter();
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (scanning) {
+    if (scanning && scanMode === "camera") {
       const scanner = new Html5QrcodeScanner(
         "qr-reader",
         {
           fps: 10,
           qrbox: { width: 250, height: 250 },
           aspectRatio: 1.0,
+          videoConstraints: {
+            facingMode: facingMode
+          }
         },
         false
       );
 
+      scannerRef.current = scanner;
+
       scanner.render(
         (decodedText) => {
-          // Extract token from URL
-          try {
-            const url = new URL(decodedText);
-            const token = url.searchParams.get("token");
-            if (token) {
-              router.push(`/pay?token=${token}`);
-            }
-          } catch {
-            // If not a URL, treat as token directly
-            router.push(`/pay?token=${decodedText}`);
-          }
+          handleQRCodeSuccess(decodedText);
           scanner.clear();
         },
         (error) => {
@@ -46,7 +45,52 @@ export default function ScanPage() {
         scanner.clear().catch(console.error);
       };
     }
-  }, [scanning, router]);
+  }, [scanning, scanMode, facingMode, router]);
+
+  const handleQRCodeSuccess = (decodedText: string) => {
+    // Extract token from URL
+    try {
+      const url = new URL(decodedText);
+      const token = url.searchParams.get("token");
+      if (token) {
+        router.push(`/pay?token=${token}`);
+      }
+    } catch {
+      // If not a URL, treat as token directly
+      router.push(`/pay?token=${decodedText}`);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const html5QrCode = new Html5Qrcode("qr-reader-upload");
+      const decodedText = await html5QrCode.scanFile(file, true);
+      handleQRCodeSuccess(decodedText);
+    } catch (error) {
+      console.error("Error scanning file:", error);
+      alert("Failed to scan QR code from image. Please try again or use camera scan.");
+    }
+  };
+
+  const switchCamera = () => {
+    setFacingMode(prev => prev === "user" ? "environment" : "user");
+    if (scanning && scanMode === "camera") {
+      setScanning(false);
+      setTimeout(() => setScanning(true), 100);
+    }
+  };
+
+  const handleStartScanning = (mode: "camera" | "upload") => {
+    setScanMode(mode);
+    if (mode === "camera") {
+      setScanning(true);
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +134,7 @@ export default function ScanPage() {
           >
             <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
               <span className="text-3xl">📷</span>
-              Camera Scan
+              Scan QR Code
             </h2>
 
             {!scanning ? (
@@ -110,31 +154,90 @@ export default function ScanPage() {
                         d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
                       />
                     </svg>
-                    <p className="text-gray-400">Camera preview will appear here</p>
+                    <p className="text-gray-400">Choose scan method below</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setScanning(true)}
-                  className="w-full btn-neon"
-                >
-                  <span>Start Camera</span>
-                </button>
+                
+                {/* Scan Options */}
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => handleStartScanning("camera")}
+                    className="btn-neon flex flex-col items-center gap-2 py-4"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span>Camera</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => handleStartScanning("upload")}
+                    className="px-6 py-4 rounded-full border border-white/20 hover:bg-white/10 transition-all duration-300 flex flex-col items-center gap-2"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>Upload</span>
+                  </button>
+                </div>
+                
+                {/* Hidden file input for upload */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
               </div>
             ) : (
               <div className="space-y-6">
-                <div id="qr-reader" className="rounded-xl overflow-hidden"></div>
-                <button
-                  onClick={() => setScanning(false)}
-                  className="w-full px-6 py-3 rounded-full border border-white/20 hover:bg-white/10 transition-all duration-300"
-                >
-                  Stop Scanning
-                </button>
+                <div className="relative">
+                  <div id="qr-reader" className="rounded-xl overflow-hidden"></div>
+                  
+                  {/* Camera Switch Button */}
+                  <button
+                    onClick={switchCamera}
+                    className="absolute top-4 right-4 p-3 bg-black/50 backdrop-blur-sm rounded-full border border-white/20 hover:bg-black/70 transition-all duration-300 z-10"
+                    title="Switch Camera"
+                  >
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setScanning(false)}
+                    className="px-6 py-3 rounded-full border border-white/20 hover:bg-white/10 transition-all duration-300"
+                  >
+                    Stop Camera
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      setScanning(false);
+                      setTimeout(() => fileInputRef.current?.click(), 100);
+                    }}
+                    className="px-6 py-3 rounded-full border border-white/20 hover:bg-white/10 transition-all duration-300 flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Upload Image
+                  </button>
+                </div>
               </div>
             )}
 
+            {/* Hidden div for file upload scanning */}
+            <div id="qr-reader-upload" className="hidden"></div>
+
             <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
               <p className="text-sm text-blue-300">
-                💡 <strong>Tip:</strong> Point your camera at the merchant's QR code
+                💡 <strong>Tip:</strong> Use camera to scan live QR codes or upload an image from your gallery
               </p>
             </div>
           </motion.div>

@@ -22,6 +22,7 @@ dist
 .env.development.local
 .env.test.local
 .env.production.local
+# Note: .env.production is committed for Vercel deployment
 
 # Firebase
 firebase-debug.log
@@ -51,3 +52,9 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*.local
+
+.vercel
+.env*.local
